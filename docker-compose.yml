@@ -1,0 +1,60 @@
+
+services:
+  # PHP-FPM for Laravel (custom build with extensions)
+  app:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    container_name: validator_app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - db
+    networks:
+      - validator_net
+
+  # Nginx Web Server
+  web:
+    image: nginx:alpine
+    container_name: validator_web
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - validator_net
+
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    platform: linux/arm64/v8
+    container_name: validator_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-validator_db}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_USER: ${DB_USERNAME:-validator_user}
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - validator_net
+
+networks:
+  validator_net:
+    driver: bridge
+
+volumes:
+  db_data:
+    driver: local
