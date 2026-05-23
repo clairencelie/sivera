@@ -55,7 +55,7 @@ class ValidatorController extends Controller
         $project = $this->validatorService->processAndValidate($projectData, $rabItemsData);
 
         return redirect()->route('validator.results', $project->id)
-            ->with('success', 'Validasi AI selesai!');
+            ->with('success', 'Proyek berhasil dibuat! Memulai validasi AI...');
     }
 
     /**
@@ -68,6 +68,19 @@ class ValidatorController extends Controller
         $overheadAnalysis = $this->validatorService->getOverheadAnalysis($project);
 
         return view('validator.results', compact('project', 'overheadAnalysis'));
+    }
+
+    /**
+     * AJAX endpoint to validate a single RAB item.
+     */
+    public function validateItem(int $itemId): \Illuminate\Http\JsonResponse
+    {
+        $result = $this->validatorService->validateSingleItem($itemId);
+        
+        return response()->json([
+            'success' => true,
+            'result'  => $result
+        ]);
     }
 
     /**

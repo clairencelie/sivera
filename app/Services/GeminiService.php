@@ -14,7 +14,7 @@ class GeminiService
     public function __construct()
     {
         $this->apiKey = config('services.gemini.api_key');
-        $this->model = config('services.gemini.model', 'gemini-1.5-flash');
+        $this->model = config('services.gemini.model', 'gemini-2.5-flash');
     }
 
     /**
@@ -40,6 +40,8 @@ class GeminiService
             $locationProvince
         );
 
+        $start = microtime(true);
+
         try {
             $response = Http::withHeaders(['Content-Type' => 'application/json'])
                 ->timeout(60)
@@ -52,20 +54,30 @@ class GeminiService
                     ],
                     'generationConfig' => [
                         'temperature' => 0.1,
-                        'responseMimeType' => 'application/json',
                     ],
                 ]);
+            $latencyMs = (int) round((microtime(true) - $start) * 1000);
 
             if ($response->failed()) {
+                $errorMessage = 'API request failed: ' . $response->status();
                 Log::error('Gemini API error', ['status' => $response->status(), 'body' => $response->body()]);
-                return $this->errorResult('API request failed: ' . $response->status());
+
+                return $this->errorResult(
+                    reason: $errorMessage,
+                    apiError: $response->body(),
+                    latencyMs: $latencyMs
+                );
             }
 
-            return $this->parseResponse($response->json());
+            return $this->parseResponse($response->json(), $latencyMs);
 
         } catch (\Exception $e) {
             Log::error('GeminiService exception', ['error' => $e->getMessage()]);
-            return $this->errorResult($e->getMessage());
+            return $this->errorResult(
+                reason: $e->getMessage(),
+                apiError: $e->getMessage(),
+                latencyMs: (int) round((microtime(true) - $start) * 1000)
+            );
         }
     }
 
@@ -96,7 +108,7 @@ Kamu adalah asisten validasi harga material dan jasa konstruksi yang sangat teli
 2. **Prioritaskan pencarian** di wilayah {$locationCity}. Jika tidak ada data, gunakan data tingkat {$locationProvince}.
 3. **Prioritaskan sumber** dari: e-katalog.lkpp.go.id, website toko bangunan/elektronik setempat, atau marketplace (Tokopedia, Shopee, myHartono).
 4. **Jika spesifikasi persis tidak ditemukan**, cari item dengan spesifikasi SETARA (equivalent) dan tandai `is_equivalent: true`.
-5. **Wajib** menyertakan URL referensi yang valid dan nyata. JANGAN mengarang URL.
+5. **Cantumkan URL referensi** untuk memudahkan penelusuran. Jika URL tidak tersedia, tetap lanjutkan analisis dengan transparan.
 6. **Evaluasi status** berdasarkan perbandingan harga usulan vs harga pasar:
    - `Wajar`: harga usulan berada dalam ±15% dari harga pasar
    - `Overprice`: harga usulan lebih dari 15% di atas harga pasar
@@ -119,13 +131,29 @@ Kembalikan HANYA JSON valid berikut, tanpa teks lain:
 PROMPT;
     }
 
-    private function parseResponse(array $responseJson): array
+    private function parseResponse(array $responseJson, int $latencyMs): array
     {
         try {
-            $text = $responseJson['candidates'][0]['content']['parts'][0]['text'] ?? null;
+            $candidate = $responseJson['candidates'][0] ?? [];
+            $parts = $candidate['content']['parts'] ?? [];
+            $textParts = collect($parts)
+                ->map(fn($part) => $part['text'] ?? null)
+                ->filter()
+                ->values()
+                ->all();
+            $text = trim(implode("\n", $textParts));
+            $grounding = $candidate['groundingMetadata'] ?? [];
+            $sourceUrls = $this->extractSourceUrls($grounding);
+            $searchQueries = $grounding['webSearchQueries'] ?? [];
 
             if (!$text) {
-                return $this->errorResult('Empty response from Gemini');
+                return $this->errorResult(
+                    reason: 'Empty response from Gemini',
+                    groundingMetadata: $grounding,
+                    sourceUrls: $sourceUrls,
+                    searchQueries: is_array($searchQueries) ? $searchQueries : [],
+                    latencyMs: $latencyMs
+                );
             }
 
             // Strip markdown code fences if present
@@ -136,8 +164,17 @@ PROMPT;
 
             if (json_last_error() !== JSON_ERROR_NONE) {
                 Log::warning('Gemini non-JSON response', ['text' => $text]);
-                return $this->errorResult('Invalid JSON in response');
+                return $this->errorResult(
+                    reason: 'Invalid JSON in response',
+                    groundingMetadata: $grounding,
+                    sourceUrls: $sourceUrls,
+                    searchQueries: is_array($searchQueries) ? $searchQueries : [],
+                    latencyMs: $latencyMs
+                );
             }
+
+            $referenceFromModel = $data['reference_url'] ?? null;
+            $primaryReference = $sourceUrls[0] ?? $referenceFromModel;
 
             return [
                 'ai_model_used'   => $this->model,
@@ -145,17 +182,51 @@ PROMPT;
                 'is_equivalent'   => (bool) ($data['is_equivalent'] ?? false),
                 'price_min'       => (float) ($data['price_min'] ?? 0),
                 'price_max'       => (float) ($data['price_max'] ?? 0),
-                'reference_url'   => $data['reference_url'] ?? null,
+                'reference_url'   => $primaryReference,
+                'source_urls'     => $sourceUrls,
+                'web_search_queries' => is_array($searchQueries) ? $searchQueries : [],
+                'grounding_metadata' => is_array($grounding) ? $grounding : null,
+                'latency_ms'      => $latencyMs,
+                'api_error'       => null,
                 'status'          => $data['status'] ?? 'Tidak Ditemukan',
                 'reasoning'       => $data['reasoning'] ?? null,
             ];
 
         } catch (\Exception $e) {
-            return $this->errorResult('Parse error: ' . $e->getMessage());
+            return $this->errorResult(
+                reason: 'Parse error: ' . $e->getMessage(),
+                apiError: $e->getMessage(),
+                latencyMs: $latencyMs
+            );
         }
     }
 
-    private function errorResult(string $reason): array
+    private function extractSourceUrls(array $groundingMetadata): array
+    {
+        $chunks = $groundingMetadata['groundingChunks'] ?? [];
+        if (!is_array($chunks)) {
+            return [];
+        }
+
+        $urls = [];
+        foreach ($chunks as $chunk) {
+            $uri = $chunk['web']['uri'] ?? null;
+            if (is_string($uri) && filter_var($uri, FILTER_VALIDATE_URL)) {
+                $urls[$uri] = true;
+            }
+        }
+
+        return array_keys($urls);
+    }
+
+    private function errorResult(
+        string $reason,
+        ?string $apiError = null,
+        ?array $groundingMetadata = null,
+        array $sourceUrls = [],
+        array $searchQueries = [],
+        ?int $latencyMs = null
+    ): array
     {
         return [
             'ai_model_used'   => $this->model,
@@ -163,7 +234,12 @@ PROMPT;
             'is_equivalent'   => false,
             'price_min'       => 0,
             'price_max'       => 0,
-            'reference_url'   => null,
+            'reference_url'   => $sourceUrls[0] ?? null,
+            'source_urls'     => $sourceUrls,
+            'web_search_queries' => $searchQueries,
+            'grounding_metadata' => $groundingMetadata,
+            'latency_ms'      => $latencyMs,
+            'api_error'       => $apiError,
             'status'          => 'Tidak Ditemukan',
             'reasoning'       => 'Gagal mendapatkan data dari AI: ' . $reason,
         ];

@@ -45,7 +45,7 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
       MYSQL_USER: ${DB_USERNAME:-validator_user}
     ports:
-      - "3306:3306"
+      - "3309:3306"
     volumes:
       - db_data:/var/lib/mysql
     networks:

@@ -18,6 +18,11 @@ class ValidationResult extends Model
         'price_min',
         'price_max',
         'reference_url',
+        'source_urls',
+        'web_search_queries',
+        'grounding_metadata',
+        'latency_ms',
+        'api_error',
         'status',
         'reasoning',
     ];
@@ -26,6 +31,10 @@ class ValidationResult extends Model
         'is_equivalent' => 'boolean',
         'price_min' => 'decimal:2',
         'price_max' => 'decimal:2',
+        'source_urls' => 'array',
+        'web_search_queries' => 'array',
+        'grounding_metadata' => 'array',
+        'latency_ms' => 'integer',
     ];
 
     public function rabItem(): BelongsTo

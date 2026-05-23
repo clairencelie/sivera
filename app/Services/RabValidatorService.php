@@ -28,9 +28,8 @@ class RabValidatorService
             $project = Project::create(array_merge($projectData, ['total_proposed_budget' => $totalBudget]));
 
             // 2. Simpan semua item RAB
-            $rabItems = [];
             foreach ($rabItemsData as $itemData) {
-                $rabItems[] = $project->rabItems()->create([
+                $project->rabItems()->create([
                     'category'      => $itemData['category'],
                     'item_name'     => $itemData['item_name'],
                     'specification' => $itemData['specification'] ?? null,
@@ -40,21 +39,26 @@ class RabValidatorService
                 ]);
             }
 
-            // 3. Validasi harga setiap item via AI
-            foreach ($rabItems as $rabItem) {
-                $this->validateItem($rabItem, $project);
-            }
-
-            // 4. Load relasi lengkap untuk dikembalikan
+            // 3. Load relasi untuk dikembalikan
             return $project->load('rabItems.validationResult');
         });
     }
 
     /**
-     * Panggil Gemini untuk satu item, simpan hasilnya ke validation_results.
+     * Validasi satu item RAB secara individu (untuk pemrosesan AJAX).
+     * Menyimpan hasil validasi ke DB dan mengembalikannya.
      */
-    private function validateItem(RabItem $rabItem, Project $project): void
+    public function validateSingleItem(int $rabItemId): ValidationResult
     {
+        $rabItem = RabItem::findOrFail($rabItemId);
+        $project = $rabItem->project;
+
+        // Cek jika sudah ada hasil validasi untuk menghindari duplikasi call
+        $existingResult = ValidationResult::where('rab_item_id', $rabItemId)->first();
+        if ($existingResult) {
+            return $existingResult;
+        }
+
         try {
             $result = $this->geminiService->validateItemPrice(
                 itemName: $rabItem->item_name,
@@ -66,16 +70,18 @@ class RabValidatorService
                 locationProvince: $project->location_province,
             );
 
-            ValidationResult::create(array_merge(['rab_item_id' => $rabItem->id], $result));
+            return ValidationResult::create(array_merge(['rab_item_id' => $rabItem->id], $result));
 
         } catch (\Exception $e) {
-            Log::error('Failed to validate RAB item', ['item_id' => $rabItem->id, 'error' => $e->getMessage()]);
-            // Simpan hasil error agar tidak memblokir item lain
-            ValidationResult::create([
+            Log::error('Failed to validate RAB item via AJAX', ['item_id' => $rabItem->id, 'error' => $e->getMessage()]);
+            
+            // Simpan hasil dengan status error agar UI tetap dapat merender baris ini dengan anggun
+            return ValidationResult::create([
                 'rab_item_id'   => $rabItem->id,
-                'ai_model_used' => 'gemini-1.5-flash',
+                'ai_model_used' => config('services.gemini.model', 'gemini-2.5-flash'),
                 'status'        => 'Tidak Ditemukan',
-                'reasoning'     => 'Error saat memproses: ' . $e->getMessage(),
+                'api_error'     => $e->getMessage(),
+                'reasoning'     => 'Gagal memproses validasi AI: ' . $e->getMessage(),
             ]);
         }
     }

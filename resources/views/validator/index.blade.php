@@ -36,8 +36,8 @@
 @section('content')
 <div id="loading-overlay">
     <div class="spinner"></div>
-    <div class="loading-text">AI sedang mencari harga...</div>
-    <div class="loading-sub">Gemini sedang melakukan pencarian harga ke internet untuk setiap item RAB. Harap tunggu, proses ini mungkin memerlukan beberapa menit.</div>
+    <div class="loading-text">Menyimpan Proyek...</div>
+    <div class="loading-sub">Menyiapkan daftar item RAB untuk divalidasi oleh AI.</div>
 </div>
 
 <div class="page-header">
