@@ -14,19 +14,19 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-            --bg: #0f1117;
-            --surface: #1a1d27;
-            --surface-2: #22263a;
-            --border: #2e3347;
-            --accent: #6366f1;
-            --accent-hover: #818cf8;
-            --accent-glow: rgba(99, 102, 241, 0.25);
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --info: #3b82f6;
-            --text: #e2e8f0;
-            --text-muted: #8892a4;
+            --bg: #f4f7fb;
+            --surface: #ffffff;
+            --surface-2: #eef3fa;
+            --border: #d6e0ef;
+            --accent: #0f2f5f;
+            --accent-hover: #184889;
+            --accent-glow: rgba(15, 47, 95, 0.16);
+            --success: #1f7a55;
+            --warning: #9a6b0a;
+            --danger: #b4232f;
+            --info: #235ca6;
+            --text: #16253b;
+            --text-muted: #5a6f8e;
             --radius: 12px;
             --radius-sm: 8px;
         }
@@ -44,8 +44,8 @@
             position: sticky;
             top: 0;
             z-index: 50;
-            background: rgba(15, 17, 23, 0.85);
-            backdrop-filter: blur(12px);
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(8px);
             border-bottom: 1px solid var(--border);
             padding: 0 2rem;
             display: flex;
@@ -64,10 +64,12 @@
         }
         .nav-brand .logo-icon {
             width: 32px; height: 32px;
-            background: linear-gradient(135deg, var(--accent), #a855f7);
+            background: linear-gradient(135deg, var(--accent), #1c4b88);
+            color: #fff;
             border-radius: var(--radius-sm);
             display: grid; place-items: center;
-            font-size: 1rem;
+            font-size: 0.82rem;
+            font-weight: 700;
         }
         .nav-links { display: flex; gap: 1.5rem; }
         .nav-links a {
@@ -148,9 +150,9 @@
             font-family: 'Inter', sans-serif;
         }
         .btn-primary {
-            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            background: linear-gradient(135deg, var(--accent), #1c4b88);
             color: #fff;
-            box-shadow: 0 4px 15px var(--accent-glow);
+            box-shadow: 0 4px 12px var(--accent-glow);
         }
         .btn-primary:hover { filter: brightness(1.15); transform: translateY(-1px); }
         .btn-danger { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
@@ -164,7 +166,7 @@
         table { width: 100%; border-collapse: collapse; }
         th { background: var(--surface-2); color: var(--text-muted); font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.75rem 1rem; text-align: left; }
         td { padding: 0.85rem 1rem; border-top: 1px solid var(--border); font-size: 0.875rem; vertical-align: middle; }
-        tr:hover td { background: var(--surface-2); }
+        tr:hover td { background: #f7faff; }
 
         /* BADGES */
         .badge {
@@ -203,7 +205,7 @@
 
 <nav>
     <a href="{{ route('validator.index') }}" class="nav-brand">
-        <span class="logo-icon">🔍</span>
+        <span class="logo-icon">SV</span>
         RAB Validator
     </a>
     <div class="nav-links">
@@ -214,7 +216,7 @@
 
 <main class="container">
     @if(session('success'))
-        <div class="alert alert-success">✅ {{ session('success') }}</div>
+        <div class="alert alert-success">{{ session('success') }}</div>
     @endif
     @if($errors->any())
         <div class="alert alert-danger">

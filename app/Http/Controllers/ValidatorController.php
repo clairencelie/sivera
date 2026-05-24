@@ -52,6 +52,11 @@ class ValidatorController extends Controller
             'proposed_price' => (float) $item['proposed_price'],
         ])->toArray();
 
+        $preparationErrors = $this->validatorService->validatePreparationRules($rabItemsData);
+        if (!empty($preparationErrors)) {
+            return back()->withErrors($preparationErrors)->withInput();
+        }
+
         $project = $this->validatorService->processAndValidate($projectData, $rabItemsData);
 
         return redirect()->route('validator.results', $project->id)

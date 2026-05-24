@@ -6,7 +6,7 @@
 
 <div class="page-header flex items-center justify-between flex-wrap gap-3">
     <div>
-        <h1>📁 Riwayat Validasi</h1>
+        <h1>Riwayat Validasi</h1>
         <p>Daftar proyek yang telah divalidasi sebelumnya.</p>
     </div>
     <a href="{{ route('validator.index') }}" class="btn btn-primary btn-sm">+ Validasi Baru</a>
@@ -50,7 +50,6 @@
 </div>
 @else
 <div class="card" style="text-align:center; padding: 3rem;">
-    <div style="font-size: 3rem; margin-bottom: 1rem;">📋</div>
     <p class="text-muted">Belum ada riwayat validasi. <a href="{{ route('validator.index') }}" style="color:var(--accent-hover);">Mulai validasi pertama Anda.</a></p>
 </div>
 @endif

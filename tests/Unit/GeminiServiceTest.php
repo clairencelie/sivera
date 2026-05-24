@@ -55,8 +55,10 @@ class GeminiServiceTest extends TestCase
         );
 
         $this->assertSame('Wajar', $result['status']);
-        $this->assertSame('https://source-1.example', $result['reference_url']);
-        $this->assertSame(['https://source-1.example', 'https://source-2.example'], $result['source_urls']);
+        $this->assertContains($result['reference_url'], ['https://source-1.example', 'https://source-2.example']);
+        $this->assertCount(2, $result['source_urls']);
+        $this->assertContains('https://source-1.example', $result['source_urls']);
+        $this->assertContains('https://source-2.example', $result['source_urls']);
         $this->assertSame(['harga semen gresik tangerang'], $result['web_search_queries']);
         $this->assertIsArray($result['grounding_metadata']);
         $this->assertNotNull($result['latency_ms']);

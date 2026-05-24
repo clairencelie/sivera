@@ -7,6 +7,31 @@ use Illuminate\Support\Facades\Log;
 
 class GeminiService
 {
+    private const MARKETPLACE_DOMAINS = [
+        'tokopedia.com',
+        'shopee.co.id',
+        'bukalapak.com',
+        'lazada.co.id',
+        'blibli.com',
+        'jd.id',
+        'olx.co.id',
+    ];
+
+    private const PREFERRED_RETAIL_DOMAINS = [
+        'myhartono.com',
+        'electronic-city.com',
+        'electroniccity.co.id',
+        'acehardware.co.id',
+        'depo-bangunan.co.id',
+        'mitra10.com',
+        'ruparupa.com',
+        'ikea.co.id',
+        'informa.co.id',
+        'lkpp.go.id',
+    ];
+
+    private const MAX_REASONING_LENGTH = 320;
+
     private string $apiKey;
     private string $model;
     private string $baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
@@ -17,10 +42,6 @@ class GeminiService
         $this->model = config('services.gemini.model', 'gemini-2.5-flash');
     }
 
-    /**
-     * Validates the price of a single RAB item using Gemini with Google Search Grounding.
-     * Returns a structured array with price range, reference URL, status, and reasoning.
-     */
     public function validateItemPrice(
         string $itemName,
         string $specification,
@@ -59,18 +80,15 @@ class GeminiService
             $latencyMs = (int) round((microtime(true) - $start) * 1000);
 
             if ($response->failed()) {
-                $errorMessage = 'API request failed: ' . $response->status();
                 Log::error('Gemini API error', ['status' => $response->status(), 'body' => $response->body()]);
-
                 return $this->errorResult(
-                    reason: $errorMessage,
+                    reason: 'API request failed: ' . $response->status(),
                     apiError: $response->body(),
                     latencyMs: $latencyMs
                 );
             }
 
             return $this->parseResponse($response->json(), $latencyMs);
-
         } catch (\Exception $e) {
             Log::error('GeminiService exception', ['error' => $e->getMessage()]);
             return $this->errorResult(
@@ -94,40 +112,36 @@ class GeminiService
         $formattedVolume = number_format($volume, 2, ',', '.') . ' ' . $unit;
 
         return <<<PROMPT
-Kamu adalah asisten validasi harga material dan jasa konstruksi yang sangat teliti dan berbasis data nyata dari internet.
+Kamu adalah asisten validasi harga material dan jasa konstruksi berbasis data internet terbaru.
 
-## Data Item yang Harus Divalidasi:
-- **Nama Item:** {$itemName}
-- **Spesifikasi:** {$specification}
-- **Volume:** {$formattedVolume}
-- **Harga Satuan Diusulkan:** {$formattedPrice}
-- **Lokasi Proyek:** {$locationCity}, {$locationProvince}
+Data item:
+- Nama: {$itemName}
+- Spesifikasi: {$specification}
+- Volume: {$formattedVolume}
+- Harga usulan: {$formattedPrice}
+- Lokasi: {$locationCity}, {$locationProvince}
 
-## Instruksi Wajib:
-1. **Cari harga** item ini di internet SEKARANG menggunakan Google Search.
-2. **Prioritaskan pencarian** di wilayah {$locationCity}. Jika tidak ada data, gunakan data tingkat {$locationProvince}.
-3. **Prioritaskan sumber** dari: e-katalog.lkpp.go.id, website toko bangunan/elektronik setempat, atau marketplace (Tokopedia, Shopee, myHartono).
-4. **Jika spesifikasi persis tidak ditemukan**, cari item dengan spesifikasi SETARA (equivalent) dan tandai `is_equivalent: true`.
-5. **Cantumkan URL referensi** untuk memudahkan penelusuran. Jika URL tidak tersedia, tetap lanjutkan analisis dengan transparan.
-6. **Evaluasi status** berdasarkan perbandingan harga usulan vs harga pasar:
-   - `Wajar`: harga usulan berada dalam ±15% dari harga pasar
-   - `Overprice`: harga usulan lebih dari 15% di atas harga pasar
-   - `Underprice`: harga usulan lebih dari 15% di bawah harga pasar
-   - `Tidak Ditemukan`: data harga tidak dapat ditemukan di internet
+Aturan:
+1. Cari harga via Google Search sekarang.
+2. Prioritaskan sumber non-marketplace resmi (vendor/distributor/instansi/retail resmi).
+3. Marketplace umum boleh dipakai hanya jika tidak ada sumber resmi, dan beri catatan.
+4. Jika spesifikasi persis tidak ditemukan, boleh pakai item setara dan set `is_equivalent=true`.
+5. Klasifikasi status:
+   - Wajar: dalam ±15% dari harga pasar
+   - Overprice: >15% di atas pasar
+   - Underprice: >15% di bawah pasar
+   - Tidak Ditemukan: tidak ada data
 
-## Format Output (JSON):
-Kembalikan HANYA JSON valid berikut, tanpa teks lain:
-```json
+Kembalikan HANYA JSON valid:
 {
-  "found_item_name": "nama item yang ditemukan atau dicek (bisa berbeda jika equivalent)",
+  "found_item_name": "string|null",
   "is_equivalent": false,
   "price_min": 0,
   "price_max": 0,
   "reference_url": "https://...",
   "status": "Wajar|Overprice|Underprice|Tidak Ditemukan",
-  "reasoning": "Penjelasan singkat dalam Bahasa Indonesia mengapa status tersebut diberikan, dan sumber data dari mana."
+  "reasoning": "maksimal 2 kalimat ringkas"
 }
-```
 PROMPT;
     }
 
@@ -146,27 +160,25 @@ PROMPT;
             $sourceUrls = $this->extractSourceUrls($grounding);
             $searchQueries = $grounding['webSearchQueries'] ?? [];
 
-            if (!$text) {
+            if ($text === '') {
                 return $this->errorResult(
                     reason: 'Empty response from Gemini',
-                    groundingMetadata: $grounding,
+                    groundingMetadata: is_array($grounding) ? $grounding : null,
                     sourceUrls: $sourceUrls,
                     searchQueries: is_array($searchQueries) ? $searchQueries : [],
                     latencyMs: $latencyMs
                 );
             }
 
-            // Strip markdown code fences if present
             $text = preg_replace('/^```json\s*/i', '', trim($text));
             $text = preg_replace('/\s*```$/i', '', $text);
-
-            $data = json_decode($text, true);
+            $data = json_decode((string) $text, true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
                 Log::warning('Gemini non-JSON response', ['text' => $text]);
                 return $this->errorResult(
                     reason: 'Invalid JSON in response',
-                    groundingMetadata: $grounding,
+                    groundingMetadata: is_array($grounding) ? $grounding : null,
                     sourceUrls: $sourceUrls,
                     searchQueries: is_array($searchQueries) ? $searchQueries : [],
                     latencyMs: $latencyMs
@@ -175,23 +187,28 @@ PROMPT;
 
             $referenceFromModel = $data['reference_url'] ?? null;
             $primaryReference = $sourceUrls[0] ?? $referenceFromModel;
+            $sourceQualityNote = $this->buildSourceQualityNote($sourceUrls);
+            $reasoning = $this->normalizeReasoning((string) ($data['reasoning'] ?? ''));
+            if ($sourceQualityNote) {
+                $reasoning = trim(($reasoning ? rtrim($reasoning, '.') . '. ' : '') . $sourceQualityNote);
+            }
+            $reasoning = $this->truncateText($reasoning, self::MAX_REASONING_LENGTH);
 
             return [
-                'ai_model_used'   => $this->model,
+                'ai_model_used' => $this->model,
                 'found_item_name' => $data['found_item_name'] ?? null,
-                'is_equivalent'   => (bool) ($data['is_equivalent'] ?? false),
-                'price_min'       => (float) ($data['price_min'] ?? 0),
-                'price_max'       => (float) ($data['price_max'] ?? 0),
-                'reference_url'   => $primaryReference,
-                'source_urls'     => $sourceUrls,
+                'is_equivalent' => (bool) ($data['is_equivalent'] ?? false),
+                'price_min' => (float) ($data['price_min'] ?? 0),
+                'price_max' => (float) ($data['price_max'] ?? 0),
+                'reference_url' => $primaryReference,
+                'source_urls' => $sourceUrls,
                 'web_search_queries' => is_array($searchQueries) ? $searchQueries : [],
                 'grounding_metadata' => is_array($grounding) ? $grounding : null,
-                'latency_ms'      => $latencyMs,
-                'api_error'       => null,
-                'status'          => $data['status'] ?? 'Tidak Ditemukan',
-                'reasoning'       => $data['reasoning'] ?? null,
+                'latency_ms' => $latencyMs,
+                'api_error' => null,
+                'status' => $data['status'] ?? 'Tidak Ditemukan',
+                'reasoning' => $reasoning,
             ];
-
         } catch (\Exception $e) {
             return $this->errorResult(
                 reason: 'Parse error: ' . $e->getMessage(),
@@ -216,7 +233,87 @@ PROMPT;
             }
         }
 
-        return array_keys($urls);
+        $ordered = array_keys($urls);
+        usort($ordered, fn($a, $b) => $this->sourceScore($b) <=> $this->sourceScore($a));
+        return $ordered;
+    }
+
+    private function buildSourceQualityNote(array $sourceUrls): ?string
+    {
+        if (count($sourceUrls) === 0) {
+            return null;
+        }
+
+        $marketplaceCount = 0;
+        $preferredCount = 0;
+
+        foreach ($sourceUrls as $url) {
+            $host = parse_url($url, PHP_URL_HOST);
+            if (!is_string($host)) {
+                continue;
+            }
+            $normalizedHost = strtolower(preg_replace('/^www\./', '', $host));
+            if ($this->hostMatchesAny($normalizedHost, self::MARKETPLACE_DOMAINS)) {
+                $marketplaceCount++;
+            }
+            if ($this->hostMatchesAny($normalizedHost, self::PREFERRED_RETAIL_DOMAINS)) {
+                $preferredCount++;
+            }
+        }
+
+        if ($marketplaceCount === count($sourceUrls)) {
+            return 'Catatan: sumber marketplace, perlu verifikasi lanjutan.';
+        }
+        if ($marketplaceCount > 0 && $preferredCount === 0) {
+            return 'Catatan: ada sumber marketplace, verifikasi tambahan disarankan.';
+        }
+
+        return null;
+    }
+
+    private function sourceScore(string $url): int
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!is_string($host)) {
+            return 0;
+        }
+        $host = strtolower(preg_replace('/^www\./', '', $host));
+
+        if ($this->hostMatchesAny($host, self::PREFERRED_RETAIL_DOMAINS)) {
+            return 100;
+        }
+        if ($this->hostMatchesAny($host, self::MARKETPLACE_DOMAINS)) {
+            return 20;
+        }
+
+        return 60;
+    }
+
+    private function hostMatchesAny(string $host, array $domains): bool
+    {
+        foreach ($domains as $domain) {
+            $domain = strtolower($domain);
+            if ($host === $domain || str_ends_with($host, '.' . $domain)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function normalizeReasoning(string $text): string
+    {
+        return preg_replace('/\s+/', ' ', trim($text)) ?? '';
+    }
+
+    private function truncateText(?string $text, int $maxLength): ?string
+    {
+        if (!$text) {
+            return $text;
+        }
+        if (mb_strlen($text) <= $maxLength) {
+            return $text;
+        }
+        return rtrim(mb_substr($text, 0, $maxLength - 1)) . '…';
     }
 
     private function errorResult(
@@ -226,22 +323,21 @@ PROMPT;
         array $sourceUrls = [],
         array $searchQueries = [],
         ?int $latencyMs = null
-    ): array
-    {
+    ): array {
         return [
-            'ai_model_used'   => $this->model,
+            'ai_model_used' => $this->model,
             'found_item_name' => null,
-            'is_equivalent'   => false,
-            'price_min'       => 0,
-            'price_max'       => 0,
-            'reference_url'   => $sourceUrls[0] ?? null,
-            'source_urls'     => $sourceUrls,
+            'is_equivalent' => false,
+            'price_min' => 0,
+            'price_max' => 0,
+            'reference_url' => $sourceUrls[0] ?? null,
+            'source_urls' => $sourceUrls,
             'web_search_queries' => $searchQueries,
             'grounding_metadata' => $groundingMetadata,
-            'latency_ms'      => $latencyMs,
-            'api_error'       => $apiError,
-            'status'          => 'Tidak Ditemukan',
-            'reasoning'       => 'Gagal mendapatkan data dari AI: ' . $reason,
+            'latency_ms' => $latencyMs,
+            'api_error' => $apiError,
+            'status' => 'Tidak Ditemukan',
+            'reasoning' => 'Gagal mendapatkan data dari AI: ' . $reason,
         ];
     }
 }

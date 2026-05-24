@@ -46,22 +46,22 @@
 
 <div class="page-header flex items-center justify-between flex-wrap gap-3">
     <div>
-        <h1>📊 Hasil Validasi Harga</h1>
-        <p>{{ $project->name }} — {{ $project->location_city }}, {{ $project->location_province }}</p>
+        <h1>Hasil Validasi Harga</h1>
+        <p>{{ $project->name }} - {{ $project->location_city }}, {{ $project->location_province }}</p>
     </div>
     <div class="flex gap-2">
         <a href="{{ route('validator.index') }}" class="btn btn-secondary btn-sm">+ Validasi Baru</a>
-        <a href="{{ route('validator.history') }}" class="btn btn-secondary btn-sm">📁 Riwayat</a>
+        <a href="{{ route('validator.history') }}" class="btn btn-secondary btn-sm">Riwayat</a>
     </div>
 </div>
 
 {{-- PROGRESS BAR VALIDASI AI (UNTUK FREE API KEY) --}}
 @if($results->count() < $totalItems)
-<div class="card mb-2" id="validation-progress-card" style="border-color: var(--accent); background: rgba(99, 102, 241, 0.05); margin-bottom: 2rem;">
+<div class="card mb-2" id="validation-progress-card" style="border-color: var(--accent); background: rgba(15, 47, 95, 0.05); margin-bottom: 2rem;">
     <div class="flex items-center justify-between flex-wrap gap-2">
         <div>
             <strong style="color: var(--accent-hover); display: flex; align-items: center; gap: 6px;">
-                <span>🤖</span> Sedang Menjalankan Validasi AI...
+                Sedang Menjalankan Validasi AI...
             </strong>
             <div class="text-muted" style="font-size: 0.82rem; margin-top: 2px;">
                 Mengecek harga pasar di internet menggunakan model aktif: {{ config('services.gemini.model', 'gemini-2.5-flash') }}. Proses dijeda beberapa detik antar item untuk menghindari batasan kuota.
@@ -72,7 +72,7 @@
         </div>
     </div>
     <div style="background: var(--surface-2); height: 6px; border-radius: 3px; margin-top: 12px; overflow: hidden;">
-        <div id="progress-bar" style="background: linear-gradient(90deg, var(--accent), #8b5cf6); width: 0%; height: 100%; transition: width 0.4s ease;"></div>
+        <div id="progress-bar" style="background: linear-gradient(90deg, var(--accent), #1c4b88); width: 0%; height: 100%; transition: width 0.4s ease;"></div>
     </div>
 </div>
 @endif
@@ -83,15 +83,15 @@
         <div class="stat-value">{{ $totalItems }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">✅ Wajar</div>
+        <div class="stat-label">Wajar</div>
         <div class="stat-value text-success">{{ $wajar }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">🔴 Overprice</div>
+        <div class="stat-label">Overprice</div>
         <div class="stat-value text-danger">{{ $overprice }}</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">🔵 Underprice</div>
+        <div class="stat-label">Underprice</div>
         <div class="stat-value" style="color:var(--info);">{{ $underprice }}</div>
     </div>
     <div class="stat-card">
@@ -104,11 +104,11 @@
 @php $ov = $overheadAnalysis; @endphp
 <div class="overhead-alert {{ $ov['is_reasonable'] ? 'ok' : 'warn' }}">
     @if($ov['is_reasonable'])
-        ✅ <strong>Biaya Persiapan Wajar:</strong>
+        <strong>Biaya Persiapan Wajar:</strong>
         Rasio biaya "Persiapan & Akhir" terhadap "Pekerjaan Utama" adalah <strong>{{ $ov['overhead_ratio'] }}%</strong>
         (batas: {{ $ov['threshold'] }}%). Masih dalam batas kewajaran.
     @else
-        ⚠️ <strong>Peringatan Overhead:</strong> {{ $ov['warning_message'] }}
+        <strong>Peringatan Overhead:</strong> {{ $ov['warning_message'] }}
         (Persiapan: Rp {{ number_format($ov['preparation_total'], 0, ',', '.') }} | Pekerjaan Utama: Rp {{ number_format($ov['main_work_total'], 0, ',', '.') }})
     @endif
 </div>
@@ -185,12 +185,12 @@
                             <div class="ref-list">
                                 @foreach(array_slice($res->source_urls, 0, 3) as $idx => $sourceUrl)
                                     <a href="{{ $sourceUrl }}" target="_blank" rel="noopener" class="ref-link">
-                                        🔗 Sumber {{ $idx + 1 }}
+                                        Sumber {{ $idx + 1 }}
                                     </a>
                                 @endforeach
                             </div>
                         @elseif($res && $res->reference_url)
-                            <a href="{{ $res->reference_url }}" target="_blank" rel="noopener" class="ref-link">🔗 Lihat Sumber</a>
+                            <a href="{{ $res->reference_url }}" target="_blank" rel="noopener" class="ref-link">Lihat Sumber</a>
                         @else
                             <span class="text-muted" style="font-size:0.8rem;">—</span>
                         @endif
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const itemId = row.getAttribute('data-item-id');
             
             // Visual highlight on current row
-            row.style.background = 'rgba(99, 102, 241, 0.08)';
+            row.style.background = 'rgba(15, 47, 95, 0.08)';
             row.style.transition = 'background 0.3s ease';
             
             const badge = row.querySelector('.badge');
@@ -298,11 +298,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (refCell) {
                         if (Array.isArray(res.source_urls) && res.source_urls.length > 0) {
                             const links = res.source_urls.slice(0, 3).map((url, idx) =>
-                                `<a href="${url}" target="_blank" rel="noopener" class="ref-link">🔗 Sumber ${idx + 1}</a>`
+                                `<a href="${url}" target="_blank" rel="noopener" class="ref-link">Sumber ${idx + 1}</a>`
                             );
                             refCell.innerHTML = `<div class="ref-list">${links.join('')}</div>`;
                         } else if (res.reference_url) {
-                            refCell.innerHTML = `<a href="${res.reference_url}" target="_blank" rel="noopener" class="ref-link">🔗 Lihat Sumber</a>`;
+                            refCell.innerHTML = `<a href="${res.reference_url}" target="_blank" rel="noopener" class="ref-link">Lihat Sumber</a>`;
                         } else {
                             refCell.innerHTML = '<span class="text-muted" style="font-size:0.8rem;">—</span>';
                         }

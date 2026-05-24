@@ -31,7 +31,7 @@ class ValidatorFlowTest extends TestCase
                     'specification' => 'General cleaning',
                     'volume' => 1,
                     'unit' => 'ls',
-                    'proposed_price' => 1200000,
+                    'proposed_price' => 70000,
                 ],
             ],
         ];
@@ -42,8 +42,33 @@ class ValidatorFlowTest extends TestCase
         $this->assertNotNull($project);
         $this->assertSame('Renovasi Kantor Unit A', $project->name);
         $this->assertCount(2, $project->rabItems()->get());
-        $this->assertSame('1950000.00', (string) $project->total_proposed_budget);
+        $this->assertSame('820000.00', (string) $project->total_proposed_budget);
 
         $response->assertRedirect('/validator/results/'.$project->id);
+    }
+
+    public function test_analyze_rejects_preparation_items_without_main_work_item(): void
+    {
+        $payload = [
+            'project_name' => 'Renovasi Kantor Unit B',
+            'location_province' => 'DKI Jakarta',
+            'location_city' => 'Jakarta Selatan',
+            'items' => [
+                [
+                    'category' => 'Persiapan & Akhir',
+                    'item_name' => 'Mobilisasi dan demobilisasi',
+                    'specification' => 'Paket',
+                    'volume' => 1,
+                    'unit' => 'ls',
+                    'proposed_price' => 2500000,
+                ],
+            ],
+        ];
+
+        $response = $this->from('/validator')->post('/validator/analyze', $payload);
+
+        $response->assertRedirect('/validator');
+        $response->assertSessionHasErrors();
+        $this->assertSame(0, Project::query()->count());
     }
 }

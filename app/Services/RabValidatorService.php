@@ -12,6 +12,14 @@ class RabValidatorService
 {
     // Threshold: biaya "Persiapan & Akhir" dianggap tidak wajar jika melebihi X% dari total "Pekerjaan Utama"
     private const OVERHEAD_WARNING_THRESHOLD_PERCENT = 10;
+    private const PREPARATION_KEYWORD_MAP = [
+        'mobilisasi' => ['pembongkaran', 'struktur', 'beton', 'pondasi', 'atap', 'instalasi', 'renovasi', 'konstruksi'],
+        'demobilisasi' => ['pembongkaran', 'struktur', 'beton', 'pondasi', 'atap', 'instalasi', 'renovasi', 'konstruksi'],
+        'kebersihan' => ['pembongkaran', 'cat', 'finishing', 'plafon', 'keramik', 'listrik', 'interior', 'renovasi', 'semen', 'beton', 'pondasi', 'pasang'],
+        'cleaning' => ['pembongkaran', 'cat', 'finishing', 'plafon', 'keramik', 'listrik', 'interior', 'renovasi', 'semen', 'beton', 'pondasi', 'pasang'],
+        'keamanan' => ['material', 'peralatan', 'instalasi', 'listrik', 'konstruksi', 'renovasi', 'alat', 'semen', 'beton', 'pondasi'],
+        'security' => ['material', 'peralatan', 'instalasi', 'listrik', 'konstruksi', 'renovasi', 'alat', 'semen', 'beton', 'pondasi'],
+    ];
 
     public function __construct(private GeminiService $geminiService) {}
 
@@ -117,5 +125,60 @@ class RabValidatorService
                 ? null
                 : "Biaya Persiapan & Akhir ({$ratio}%) melebihi batas kewajaran " . self::OVERHEAD_WARNING_THRESHOLD_PERCENT . "% dari total Pekerjaan Utama.",
         ];
+    }
+
+    /**
+     * Validasi kelayakan item kategori persiapan/penyelesaian terhadap pekerjaan utama.
+     * Return list error messages. Jika kosong berarti lolos proteksi.
+     */
+    public function validatePreparationRules(array $rabItemsData): array
+    {
+        $mainItems = collect($rabItemsData)->filter(fn($i) => ($i['category'] ?? null) === 'Pekerjaan Utama')->values();
+        $prepItems = collect($rabItemsData)->filter(fn($i) => ($i['category'] ?? null) === 'Persiapan & Akhir')->values();
+
+        if ($prepItems->isEmpty()) {
+            return [];
+        }
+
+        $errors = [];
+        if ($mainItems->isEmpty()) {
+            $errors[] = 'Item kategori Persiapan & Akhir tidak dapat diajukan tanpa item Pekerjaan Utama.';
+            return $errors;
+        }
+
+        $mainText = strtolower($mainItems
+            ->map(fn($i) => trim(($i['item_name'] ?? '') . ' ' . ($i['specification'] ?? '')))
+            ->implode(' '));
+
+        foreach ($prepItems as $prep) {
+            $prepName = strtolower(trim(($prep['item_name'] ?? '') . ' ' . ($prep['specification'] ?? '')));
+            foreach (self::PREPARATION_KEYWORD_MAP as $prepKeyword => $requiredMainKeywords) {
+                if (!str_contains($prepName, $prepKeyword)) {
+                    continue;
+                }
+
+                $hasRelevantMain = collect($requiredMainKeywords)->contains(
+                    fn($mainKeyword) => str_contains($mainText, $mainKeyword)
+                );
+
+                if (!$hasRelevantMain) {
+                    $errors[] = "Item Persiapan & Akhir '{$prep['item_name']}' belum didukung pekerjaan utama yang relevan.";
+                }
+            }
+        }
+
+        $preparationTotal = $prepItems->sum(fn($i) => (float) ($i['volume'] ?? 0) * (float) ($i['proposed_price'] ?? 0));
+        $mainWorkTotal = $mainItems->sum(fn($i) => (float) ($i['volume'] ?? 0) * (float) ($i['proposed_price'] ?? 0));
+        if ($mainWorkTotal <= 0) {
+            $errors[] = 'Total nilai pekerjaan utama harus lebih dari 0 jika terdapat item Persiapan & Akhir.';
+            return array_values(array_unique($errors));
+        }
+
+        $ratio = ($preparationTotal / $mainWorkTotal) * 100;
+        if ($ratio > self::OVERHEAD_WARNING_THRESHOLD_PERCENT) {
+            $errors[] = 'Total biaya Persiapan & Akhir (' . number_format($ratio, 2) . '%) melebihi batas kewajaran ' . self::OVERHEAD_WARNING_THRESHOLD_PERCENT . '% dari pekerjaan utama.';
+        }
+
+        return array_values(array_unique($errors));
     }
 }

@@ -12,7 +12,8 @@
     #loading-overlay {
         display: none;
         position: fixed; inset: 0;
-        background: rgba(15,17,23,0.88);
+        background: rgba(244,247,251,0.88);
+        backdrop-filter: blur(3px);
         z-index: 200;
         flex-direction: column;
         align-items: center;
@@ -41,8 +42,13 @@
 </div>
 
 <div class="page-header">
-    <h1>🏗️ Form Validasi Harga RAB</h1>
+    <h1>Form Validasi Harga RAB</h1>
     <p>Masukkan detail proyek dan daftar item RAB. AI akan memvalidasi kewajaran harga berdasarkan data pasar terkini.</p>
+    <div class="mt-2">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="loadDummyAsmPekanbaru()">
+            Muat Dummy ASM Pekanbaru
+        </button>
+    </div>
 </div>
 
 <form method="POST" action="{{ route('validator.analyze') }}" id="rab-form">
@@ -50,7 +56,7 @@
 
     {{-- PROJECT INFO --}}
     <div class="card mb-2">
-        <div class="card-title">📋 Informasi Proyek</div>
+        <div class="card-title">Informasi Proyek</div>
         <div class="form-grid">
             <div class="form-group" style="grid-column: 1 / -1;">
                 <label for="project_name">Nama Proyek *</label>
@@ -80,7 +86,7 @@
     {{-- RAB ITEMS --}}
     <div class="card">
         <div class="flex items-center justify-between mb-2">
-            <div class="card-title" style="margin-bottom:0;">📦 Daftar Item RAB</div>
+            <div class="card-title" style="margin-bottom:0;">Daftar Item RAB</div>
             <button type="button" class="btn btn-secondary btn-sm" onclick="addRow()">+ Tambah Item</button>
         </div>
 
@@ -119,10 +125,10 @@
 
         <div class="mt-3 flex items-center justify-between flex-wrap gap-2">
             <p class="text-muted" style="font-size:0.82rem;">
-                💡 Proses validasi AI membutuhkan waktu ~10–30 detik per item.
+                Proses validasi AI membutuhkan waktu sekitar 10-30 detik per item. Sistem memprioritaskan sumber non-marketplace.
             </p>
             <button type="submit" class="btn btn-primary" id="submit-btn">
-                🤖 Mulai Validasi AI
+                Mulai Validasi AI
             </button>
         </div>
     </div>
@@ -132,6 +138,7 @@
 @push('scripts')
 <script>
     let rowIndex = 1;
+    const asmDummyData = @json(config('dummy_rabs.asm_agency_pekanbaru'));
 
     function addRow() {
         const tbody = document.getElementById('rab-tbody');
@@ -158,6 +165,52 @@
         rowIndex++;
     }
 
+    function addRowWithData(item) {
+        const tbody = document.getElementById('rab-tbody');
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>
+                <select name="items[${rowIndex}][category]" required>
+                    <option value="Persiapan & Akhir" ${item.category === 'Persiapan & Akhir' ? 'selected' : ''}>Persiapan & Akhir</option>
+                    <option value="Pekerjaan Utama" ${item.category === 'Pekerjaan Utama' ? 'selected' : ''}>Pekerjaan Utama</option>
+                </select>
+            </td>
+            <td><input type="text" name="items[${rowIndex}][item_name]" value="${escapeHtml(item.item_name)}" required></td>
+            <td><input type="text" name="items[${rowIndex}][specification]" value="${escapeHtml(item.specification || '')}"></td>
+            <td><input type="number" name="items[${rowIndex}][volume]" value="${item.volume}" min="0.01" step="0.01" required></td>
+            <td><input type="text" name="items[${rowIndex}][unit]" value="${escapeHtml(item.unit)}" required></td>
+            <td><input type="number" name="items[${rowIndex}][proposed_price]" value="${item.proposed_price}" min="0" required></td>
+            <td><button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">✕</button></td>
+        `;
+        tbody.appendChild(row);
+        rowIndex++;
+    }
+
+    function loadDummyAsmPekanbaru() {
+        if (!asmDummyData || !Array.isArray(asmDummyData.items)) {
+            return;
+        }
+
+        document.getElementById('project_name').value = asmDummyData.project_name || '';
+        document.getElementById('location_province').value = asmDummyData.location_province || '';
+        document.getElementById('location_city').value = asmDummyData.location_city || '';
+
+        const tbody = document.getElementById('rab-tbody');
+        tbody.innerHTML = '';
+        rowIndex = 0;
+
+        asmDummyData.items.forEach((item) => addRowWithData(item));
+    }
+
+    function escapeHtml(text) {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     function removeRow(btn) {
         const row = btn.closest('tr');
         const tbody = document.getElementById('rab-tbody');
@@ -172,7 +225,16 @@
         // For now, the city field is a free-text input for flexibility
     }
 
-    document.getElementById('rab-form').addEventListener('submit', function () {
+    document.getElementById('rab-form').addEventListener('submit', function (event) {
+        const categories = Array.from(document.querySelectorAll('select[name$="[category]"]')).map((el) => el.value);
+        const hasPrep = categories.includes('Persiapan & Akhir');
+        const hasMain = categories.includes('Pekerjaan Utama');
+        if (hasPrep && !hasMain) {
+            alert('Item Persiapan & Akhir hanya dapat diajukan jika ada item Pekerjaan Utama.');
+            event.preventDefault();
+            return;
+        }
+
         document.getElementById('loading-overlay').classList.add('visible');
         document.getElementById('submit-btn').disabled = true;
     });
